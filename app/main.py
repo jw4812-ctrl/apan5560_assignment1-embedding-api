@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from app.gan_model import Generator, LATENT_DIM
 
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -24,6 +25,18 @@ cnn.load_state_dict(
     torch.load(model_path, map_location="cpu", weights_only=True)
 )
 cnn.eval()
+
+gan_model_path = (
+    Path(__file__).resolve().parent.parent
+    / "models"
+    / "gan_mnist.pth"
+)
+
+generator = Generator()
+generator.load_state_dict(
+    torch.load(gan_model_path, map_location="cpu", weights_only=True)
+)
+generator.eval()
 
 classes = [
     "airplane", "automobile", "bird", "cat", "deer",
@@ -78,4 +91,24 @@ async def classify_image(file: UploadFile = File(...)):
         "class_id": class_id,
         "class": classes[class_id],
         "confidence": probabilities[0, class_id].item(),
+    }
+
+@app.get("/generate")
+def generate_images(num_samples: int = 4):
+    if num_samples < 1 or num_samples > 16:
+        raise HTTPException(
+            status_code=400,
+            detail="num_samples must be between 1 and 16.",
+        )
+
+    noise = torch.randn(num_samples, LATENT_DIM)
+
+    with torch.no_grad():
+        images = generator(noise)
+        images = (images.squeeze(1) + 1) / 2
+
+    return {
+        "num_samples": num_samples,
+        "image_shape": [28, 28],
+        "images": images.tolist(),
     }
