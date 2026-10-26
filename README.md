@@ -1,108 +1,57 @@
-# Assignment 2: CNN Image Classification API
+# Assignment 3: MNIST GAN API
 
-This project adds a CIFAR-10 image classifier to the FastAPI word embedding API from Assignment 1.
+This project extends the Module 6 FastAPI application with a PyTorch GAN trained on MNIST. It keeps the existing word embedding and CIFAR-10 classification endpoints and adds an endpoint for generating handwritten digit images.
 
 ## Run with Docker
 
-Install and start Docker Desktop. From the project directory, run:
+From the project directory, build and start the API:
 
 ```bash
-docker build -t assignment2-cnn-api .
-docker run --rm -p 8000:80 assignment2-cnn-api
+docker build -t apan5560-assignment3 .
+docker run --rm -p 8000:80 apan5560-assignment3
 ```
 
-Open http://127.0.0.1:8000/docs to test the endpoints.
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) to try the endpoints. The Docker image includes both trained model checkpoints, so retraining is not required to run inference.
 
-The trained weights are included in `models/cnn_cifar10.pth`, so retraining is not required to run the API. Inference runs on the CPU.
+## Generate MNIST images
 
-## Image classification
+Endpoint: `GET /generate`
 
-Endpoint: `POST /classify`
+Optional query parameter: `num_samples`, an integer from 1 to 16 (default: 4).
 
-Upload an image using the multipart form field `file`.
+Example: `http://127.0.0.1:8000/generate?num_samples=4`
 
-In Swagger UI:
-1. Expand `POST /classify`.
-2. Click **Try it out**.
-3. Select an image file.
-4. Click **Execute**.
+The response contains the number of samples, image dimensions (`28 × 28`), and generated pixel values scaled to `[0, 1]`.
 
-Alternatively, replace `image.jpg` with the path to your image:
+## GAN architecture
 
-```bash
-curl -X POST http://127.0.0.1:8000/classify \
-  -F "file=@image.jpg"
-```
+- **Generator:** accepts a 100-dimensional noise vector, projects it to `128 × 7 × 7`, then uses two transposed convolution layers to produce a `1 × 28 × 28` image. Batch normalization and ReLU follow the first layer; Tanh is used at the output.
+- **Discriminator:** takes a `1 × 28 × 28` image through two convolution layers, with BatchNorm and LeakyReLU as specified, then outputs a single real/fake probability.
 
-The response contains:
-- `class_id`: predicted class index, from 0 to 9.
-- `class`: predicted class name.
-- `confidence`: softmax probability for the predicted class.
+## Train the GAN
 
-Classes, in index order: airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck.
-
-Images are converted to RGB, resized to 64 × 64, and converted to tensors using the same preprocessing as training.
-
-## CNN architecture
-
-| Layer | Output shape, excluding batch |
-|---|---|
-| RGB input | 3 × 64 × 64 |
-| Conv2d: 16 filters, kernel 3, stride 1, padding 1; ReLU | 16 × 64 × 64 |
-| MaxPool2d: kernel 2, stride 2 | 16 × 32 × 32 |
-| Conv2d: 32 filters, kernel 3, stride 1, padding 1; ReLU | 32 × 32 × 32 |
-| MaxPool2d: kernel 2, stride 2 | 32 × 16 × 16 |
-| Flatten | 8192 |
-| Linear; ReLU | 100 |
-| Linear | 10 |
-
-## Training
-
-The model uses the CIFAR-10 training set with:
-- Cross-entropy loss
-- Adam optimizer with learning rate 0.0005
-- Batch size 32
-- 10 epochs
-- PyTorch random seed 42
-
-The trained model achieved **66.00% accuracy** on the CIFAR-10 test set.
-
-To retrain with Python 3.11 and uv installed:
+With Python 3.11 and `uv` installed, run:
 
 ```bash
 uv sync --python 3.11 --frozen
-uv run python train_cnn.py
+uv run python train_gan.py
 ```
 
-The script downloads CIFAR-10 into `data/` and saves weights to `models/cnn_cifar10.pth`. It uses MPS or CUDA when available, otherwise CPU.
+The script downloads MNIST into `data/`, trains for 10 epochs, and saves the generator weights to `models/gan_mnist.pth`. It uses MPS or CUDA when available, otherwise CPU. The discriminator is used during training; only the generator is needed for image generation in the API.
 
-## Run locally
+## Existing API endpoints
 
-```bash
-uv sync --python 3.11 --frozen
-uv run uvicorn app.main:app --reload
-```
-
-Open http://127.0.0.1:8000/docs.
-
-## Existing embedding endpoint
-
-Endpoint: `POST /embedding`
-
-```bash
-curl -X POST http://127.0.0.1:8000/embedding \
-  -H "Content-Type: application/json" \
-  -d '{"word":"hello"}'
-```
-
-Returns the word and its spaCy embedding.
+- `POST /embedding`: returns a spaCy word embedding.
+- `POST /classify`: accepts an image upload and returns a CIFAR-10 class prediction.
+- `GET /generate`: generates MNIST-like digit images.
 
 ## Project files
 
-- `app/cnn_model.py`: CNN architecture
-- `train_cnn.py`: model training and evaluation
-- `app/main.py`: FastAPI endpoints and image inference
-- `app/embedding_model.py`: word embedding functionality
-- `models/cnn_cifar10.pth`: trained CNN weights
-- `Dockerfile`: Docker deployment
-- `pyproject.toml` and `uv.lock`: dependencies
+- `app/gan_model.py`: GAN Generator and Discriminator architectures.
+- `train_gan.py`: MNIST GAN training script.
+- `models/gan_mnist.pth`: trained Generator weights used by `/generate`.
+- `app/main.py`: FastAPI application and endpoints.
+- `app/cnn_model.py`, `train_cnn.py`, and `models/cnn_cifar10.pth`: existing CIFAR-10 classifier.
+- `app/embedding_model.py`: existing word embedding functionality.
+- `Dockerfile`: Docker deployment configuration.
+- `pyproject.toml` and `uv.lock`: Python dependencies.
